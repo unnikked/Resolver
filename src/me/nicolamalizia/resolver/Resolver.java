@@ -1,8 +1,12 @@
 package me.nicolamalizia.resolver;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Executable;
 import java.lang.reflect.InvocationTargetException;
-import java.util.*;
+import java.lang.reflect.Method;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -11,7 +15,7 @@ import java.util.function.Function;
  */
 public final class Resolver implements Container {
 	public static final Class<?>[] DEFAULT_CONSTRUCTOR = new Class<?>[]{};
-	private static final Class<?> [] FIRST_CONSTRUCTOR = new Class<?>[]{};
+	private static final Class<?>[] FIRST_DECLARED = new Class<?>[]{};
 	private final Map<Class<?>, Pair<Class<?>, Class<?>[]>> bindings = new ConcurrentHashMap<>();
 	private final Map<Class<?>, Function<Resolver, Object>> customBindings = new ConcurrentHashMap<>();
 	private final Map<Pair<Class<?>, Class<?>>, Class<?>> contextualBindings = new ConcurrentHashMap<>();
@@ -42,7 +46,7 @@ public final class Resolver implements Container {
 			throw new RuntimeException("Unbound interface " + aClass);
 		}
 
-		return resolve(aClass, FIRST_CONSTRUCTOR);
+		return resolve(aClass, FIRST_DECLARED);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -54,7 +58,7 @@ public final class Resolver implements Container {
 	@SuppressWarnings("unchecked")
 	public <T> T resolve(Class<?> aClass, Class<?>... parameters) {
 		try {
-			if (parameters == FIRST_CONSTRUCTOR) {
+			if (parameters == FIRST_DECLARED) {
 				return resolveFirstConstructor(aClass);
 			}
 			return resolveConstructor(aClass, parameters);
@@ -78,14 +82,15 @@ public final class Resolver implements Container {
 
 	/**
 	 * Resolves constructor parameters
-	 * @param owner of the constructor
-	 * @param constructor to be resolved
+	 *
+	 * @param owner       of the constructor
+	 * @param executable to be resolved
 	 * @return resolved dependencies
 	 */
-	private Object[] resolveDependencies(Class<?> owner, Constructor<?> constructor) {
+	private Object[] resolveDependencies(Class<?> owner, Executable executable) {
 		List<Object> dependencies = new LinkedList<>();
 		// Resolving each parameter of the constructor recursively.
-		for (Class<?> aClass : constructor.getParameterTypes()) {
+		for (Class<?> aClass : executable.getParameterTypes()) {
 			if (isContextBinded(owner, aClass)) {
 				dependencies.add(resolve(getContext(owner, aClass)));
 				continue;
@@ -107,7 +112,8 @@ public final class Resolver implements Container {
 			if (aClass.isInterface()) {
 				Pair<Class<?>, Class<?>[]> concrete;
 				if ((concrete = bindings.get(aClass)) != null) {
-					dependencies.add(resolve(concrete.getLeft(), concrete.getRight()));
+					final Class<?>[] right = concrete.getRight();
+					dependencies.add(resolve(concrete.getLeft(), right));
 					continue;
 				}
 
@@ -126,6 +132,7 @@ public final class Resolver implements Container {
 
 	/**
 	 * Checks if the class is custom bindend
+	 *
 	 * @param aClass class to check
 	 * @return true if the class is custom binded
 	 */
@@ -135,6 +142,7 @@ public final class Resolver implements Container {
 
 	/**
 	 * Checks if the class is bindend
+	 *
 	 * @param aClass class to check
 	 * @return true if the class is custom binded
 	 */
@@ -144,8 +152,9 @@ public final class Resolver implements Container {
 
 	/**
 	 * Gets the implementation of the needed concrete
+	 *
 	 * @param concrete the concrete class
-	 * @param needs the needed class
+	 * @param needs    the needed class
 	 * @return the implementation needed
 	 */
 	private Class<?> getContext(Class<?> concrete, Class<?> needs) {
@@ -155,8 +164,9 @@ public final class Resolver implements Container {
 
 	/**
 	 * Checks if the concrete is context binded
-	 * @param concrete the concreete class
-	 * @param needs the needed class
+	 *
+	 * @param concrete the concrete class
+	 * @param needs    the needed class
 	 * @return true if there exists an implementation needed
 	 */
 	private boolean isContextBinded(Class<?> concrete, Class<?> needs) {
@@ -164,36 +174,74 @@ public final class Resolver implements Container {
 		return contextualBindings.containsKey(implementation);
 	}
 
+	/**
+	 * Gets the value of a primitive type contextually binded
+	 * @param owner the owner type
+	 * @param aClass the primitive type
+	 * @return value of a primitive type
+	 */
 	private Object getPrimitiveContext(Class<?> owner, Class<?> aClass) {
-		Pair<Class<?>, Class<?>> key = new Pair<>(owner, aClass);
-		return primitiveContextualBindings.get(key);
+		return primitiveContextualBindings.get(new Pair<>(owner, aClass));
 	}
 
+	/**
+	 * Checks if the value of a primitive type is contextually binded
+	 * @param owner the owner type
+	 * @param aClass the primitive type
+	 * @return value of a primitive type
+	 */
 	private boolean isPrimitiveContextBinded(Class<?> owner, Class<?> aClass) {
-		Pair<Class<?>, Class<?>> key = new Pair<>(owner, aClass);
-		return primitiveContextualBindings.containsKey(key);
+		return primitiveContextualBindings.containsKey(new Pair<>(owner, aClass));
 	}
 
+	/**
+	 * Checks if the given abstract type has been bound.
+	 *
+	 * @param anAbstract abstract to check
+	 * @return true if the abstract is bound
+	 */
 	@Override
 	public boolean bounded(Class<?> anAbstract) {
 		return false;
 	}
 
+	/**
+	 * Register a binding with the container.
+	 *
+	 * @param anAbstract abstract to bind
+	 * @param aConcrete  implementation to bind
+	 * @return true if the binding succeed
+	 */
 	@Override
 	public boolean bind(Class<?> anAbstract, Class<?> aConcrete) {
-		return bind(anAbstract, aConcrete, FIRST_CONSTRUCTOR);
+		return bind(anAbstract, aConcrete, FIRST_DECLARED);
 	}
 
+	/**
+	 * Register a binding with the container choosing a specific constructor.
+	 *
+	 * @param anAbstract abstract to bind
+	 * @param aConcrete  implementation to bind
+	 * @return true if the binding succeed
+	 */
 	@Override
 	public boolean bind(Class<?> anAbstract, Class<?> aConcrete, Class<?>... parameters) {
 		Pair<Class<?>, Class<?>[]> bind = new Pair<>(aConcrete, parameters);
 		return bindings.put(anAbstract, bind) != null;
 	}
 
+	/**
+	 * Register a binding with the container using a custom resolver
+	 *
+	 * @param anAbstract     abstract to bind
+	 * @param customResolver custom resolver to bind
+	 * @return true if the binding succeed
+	 */
 	@Override
 	public boolean bind(Class<?> anAbstract, Function<Resolver, Object> customResolver) {
 		return customBindings.put(anAbstract, customResolver) != null;
 	}
+
 
 	@Override
 	public boolean singleton(Class<?> anAbstract, Class<?> aConcrete) {
@@ -215,9 +263,16 @@ public final class Resolver implements Container {
 		return primitiveContextualBindings.put(bind, object) != null;
 	}
 
+
 	@Override
-	public <T> T call(Class<?> aClass, String method, Class<?>... params) {
-		return null;
+	public Object call(Object instance, String method, Class<?>... params) {
+		try {
+			Method declaredMethod = instance.getClass().getDeclaredMethod(method, params);
+			Object[] dependencies = resolveDependencies(instance.getClass(), declaredMethod);
+			return declaredMethod.invoke(instance, dependencies);
+		} catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	public ContextualBinding when(Class<?> aConcrete) {

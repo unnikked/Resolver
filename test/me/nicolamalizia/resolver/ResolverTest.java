@@ -12,31 +12,36 @@ import static org.junit.Assert.assertTrue;
  *
  */
 public class ResolverTest {
-	@Test public void testImplementationBinding() {
+	@Test
+	public void testImplementationBinding() {
 		Container container = new Resolver();
 		container.bind(I.class, A.class);
 		assertEquals(A.class, container.resolve(I.class).getClass());
 	}
 
-	@Test public void testNestedClasses() {
+	@Test
+	public void testNestedClasses() {
 		Container container = new Resolver();
 		A a = container.resolve(A.class);
 		assertEquals(A.class, a.getClass());
 	}
 
-	@Test public void testCustomResolver() {
+	@Test
+	public void testCustomResolver() {
 		Container container = new Resolver();
 		container.bind(I.class, (resolver -> new A(new B())));
 		assertEquals(A.class, container.resolve(I.class).getClass());
 	}
 
-	@Test public void testCustomResolverCalled() {
+	@Test
+	public void testCustomResolverCalled() {
 		Container container = new Resolver();
 		container.bind(I.class, (resolver -> resolver.resolve(A.class)));
 		assertEquals(A.class, container.resolve(I.class).getClass());
 	}
 
-	@Test public void testCustomResolverAnonymousClass() {
+	@Test
+	public void testCustomResolverAnonymousClass() {
 		Container container = new Resolver();
 		container.bind(Runnable.class, resolver -> new Runnable() {
 			@Override
@@ -47,13 +52,15 @@ public class ResolverTest {
 		assertTrue(container.resolve(Runnable.class).getClass().isAnonymousClass());
 	}
 
-	@Test public void testCustomResolverLambda() {
+	@Test
+	public void testCustomResolverLambda() {
 		Container container = new Resolver();
 		container.bind(Function.class, resolver -> (Function<A, B>) a -> new B());
 		assertTrue(container.resolve(Function.class).getClass().isSynthetic());
 	}
 
-	@Test public void testContextualBinding() {
+	@Test
+	public void testContextualBinding() {
 		Container container = new Resolver();
 		container.when(C.class)
 				.needs(I.class)
@@ -64,7 +71,8 @@ public class ResolverTest {
 		assertEquals(A.class, i.getClass());
 	}
 
-	@Test public void testContextualBindingForAPrimitiveValue() {
+	@Test
+	public void testContextualBindingForAPrimitiveValue() {
 		Container container = new Resolver();
 		int ten = 10;
 		container.when(D.class)
@@ -76,16 +84,29 @@ public class ResolverTest {
 		assertEquals(ten, i);
 	}
 
-	@Test public void testNoConstructor() {
+	@Test
+	public void testNoConstructor() {
 		Container container = new Resolver();
 		assertEquals(E.class, container.resolve(E.class).getClass());
 	}
 
-	@Test public void testSpecificConstructor() {
+	@Test
+	public void testSpecificConstructor() {
 		Container container = new Resolver();
 		container.bind(F.class, F.class, A.class, LinkedList.class);
 		assertEquals(F.class, container.resolve(F.class).getClass());
 		assertEquals(F.class, container.resolve(F.class, LinkedList.class, A.class).getClass());
+	}
+
+	@Test
+	public void testCallMethod() {
+		Container container = new Resolver();
+		container.when(A.class)
+				.needs(boolean.class)
+				.give(true);
+		A instance = container.resolve(A.class);
+		Object result = container.call(instance, "method", boolean.class);
+		assertTrue((boolean) result);
 	}
 }
 
@@ -96,6 +117,10 @@ interface I {
 class A implements I {
 	public A(B b) {
 
+	}
+
+	boolean method(boolean bool) {
+		return bool;
 	}
 }
 
@@ -129,7 +154,8 @@ class D {
 	}
 }
 
-class E {}
+class E {
+}
 
 class F {
 	public F(LinkedList<A> linkedList, A a) {
